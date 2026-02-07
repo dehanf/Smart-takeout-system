@@ -1,8 +1,11 @@
 require('dotenv').config();
+const connectDB = require('./config/db'); // Import the connection function
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+// Connect to Database
+connectDB(); // <--- ADD THIS LINE
 
 // Initialize Express
 const app = express();
