@@ -4,8 +4,12 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+
+const { processLocationUpdate } = require('./services/pollingEngine');
+
+
 // Connect to Database
-connectDB(); // <--- ADD THIS LINE
+connectDB();
 
 // Initialize Express
 const app = express();
@@ -41,10 +45,7 @@ io.on('connection', (socket) => {
     // VISUAL CONFIRMATION:
     console.log(`📍 UPDATE [${orderId}]: Lat ${latitude}, Lng ${longitude} | Speed: ${speed}`);
 
-    // TODO (Next Step): 
-    // - Calculate Distance to Shop
-    // - Check if we need to update ETA
-    // - Emit 'prep_started' if close enough
+    processLocationUpdate(io, data);
   });
 
   socket.on('disconnect', () => {
