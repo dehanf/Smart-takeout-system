@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Button, ActivityIndicator, Alert } from 'react-native';
-import locationService from '../services/LocationService';
-import socketService from '../services/SocketService';
+import locationService from '../../services/LocationService';
+import socketService from '../../services/SocketService';
 
 const TrackingScreen = () => {
   // 1. UI State

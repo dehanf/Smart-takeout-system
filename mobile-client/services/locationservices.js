@@ -7,7 +7,7 @@ class LocationService {
     this.currentOrderId = null; // We need to know WHICH order we are tracking
   }
 
-  // 1. Start the "Beacon"
+
   async startTracking(orderId) {
     console.log('Starting GPS Tracking for Order:', orderId);
     this.currentOrderId = orderId;
