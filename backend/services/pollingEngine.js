@@ -1,26 +1,29 @@
-// backend/services/pollingEngine.js
 const Order = require('../models/Order');
-const { getLiveETA } = require('./mapsService'); // Import the wrapper
+const { getLiveETA } = require('./mapsService');
 
-// CONFIGURATION
 const SLACK_BUFFER_MINUTES = 1; 
+const GOOGLE_CHECK_INTERVAL_MS = 60000; // 1 minute cooldown
 
 const processLocationUpdate = async (io, data) => {
   const { orderId, latitude, longitude } = data;
 
   try {
     const order = await Order.findById(orderId);
+    
+    // EDIT 3: Don't process if order is already being prepared or done
     if (!order || order.status !== 'TRACKING') return;
 
-    // --- SMART LOGIC: WHEN TO CALL GOOGLE? ---
-    // Option A: Only call if 1 minute has passed since last check
-    // Option B: Only call if user moved > 500m
-    // For now, let's assume we call it every time (WARNING: COSTS MONEY)
-    // In production, you MUST save 'lastCheckedTime' in DB and compare.
+    // EDIT 1: The Throttling Logic (Save Money)
+    const now = Date.now();
+    const lastCheck = order.lastGoogleCheck ? new Date(order.lastGoogleCheck).getTime() : 0;
+    
+    if (now - lastCheck < GOOGLE_CHECK_INTERVAL_MS) {
+      console.log(`⏱️ Skipping Google API: Last check was ${(now - lastCheck)/1000}s ago.`);
+      return; 
+    }
 
-    console.log(`🌍 Calling Google Maps for accurate traffic data...`);
+    console.log(`🌍 Calling Google Maps for Order: ${orderId}`);
 
-    // 1. Get Exact Duration from Google (in seconds)
     const durationSeconds = await getLiveETA(
       latitude, 
       longitude, 
@@ -28,39 +31,35 @@ const processLocationUpdate = async (io, data) => {
       order.shopLocation.lng
     );
 
-    if (!durationSeconds) {
-       console.log('⚠️ Google API failed, skipping this update.');
-       return; 
-    }
+    if (!durationSeconds) return;
 
+    // Update the timestamp in the DB
+    order.lastGoogleCheck = now;
     const etaMinutes = Math.round(durationSeconds / 60);
-
-    // 2. Calculate Slack Time
-    // Slack = (Live ETA) - (Prep Time)
     const slackTime = etaMinutes - order.prepTime;
 
-    console.log(`🚦 Google Says: ${etaMinutes} mins away | Prep: ${order.prepTime}m | Slack: ${slackTime}m`);
+    console.log(`🚦 ETA: ${etaMinutes}m | Prep: ${order.prepTime}m | Slack: ${slackTime}m`);
 
-    // 3. THE DECISION
     if (slackTime <= SLACK_BUFFER_MINUTES) {
-      
-      // Trigger Prep
       order.status = 'PREPARING';
       await order.save();
 
-      io.emit('prep_started', {
+      // EDIT 2: Targeted Broadcasting using Rooms
+      io.to(orderId).emit('prep_started', {
         orderId: orderId,
-        message: `START COOKING! Traffic-adjusted ETA: ${etaMinutes} mins.`
+        message: `START COOKING! Driver arrives in ${etaMinutes} mins.`
       });
 
-      console.log(`🔥 JIT TRIGGERED (Verified by Google Maps)`);
+      console.log(`🔥 JIT TRIGGERED`);
     } else {
-       // Just update dashboard
-       io.emit('eta_update', {
+      // EDIT 2: Targeted Broadcasting
+      io.to(orderId).emit('eta_update', {
         orderId: orderId,
         eta: etaMinutes,
         slack: slackTime
       });
+      
+      await order.save(); // Save the lastGoogleCheck timestamp
     }
 
   } catch (error) {
